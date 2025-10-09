@@ -1,45 +1,63 @@
 """
-High School Management System API
+Finance Management System API
 
-A super simple FastAPI application that allows students to view and sign up
-for extracurricular activities at Mergington High School.
+A simple FastAPI application for tracking personal income and expenses.
 """
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime
 import os
 from pathlib import Path
 
-app = FastAPI(title="Mergington High School API",
-              description="API for viewing and signing up for extracurricular activities")
+app = FastAPI(title="Finance Management API",
+              description="API for tracking income and expenses")
 
 # Mount the static files directory
 current_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
           "static")), name="static")
 
-# In-memory activity database
-activities = {
-    "Chess Club": {
-        "description": "Learn strategies and compete in chess tournaments",
-        "schedule": "Fridays, 3:30 PM - 5:00 PM",
-        "max_participants": 12,
-        "participants": ["michael@mergington.edu", "daniel@mergington.edu"]
+# Pydantic models
+class Transaction(BaseModel):
+    description: str
+    amount: float
+    type: str  # "income" or "expense"
+    category: str
+    date: Optional[str] = None
+
+# In-memory transaction database
+transactions = [
+    {
+        "id": 1,
+        "description": "Salary",
+        "amount": 5000.00,
+        "type": "income",
+        "category": "Salary",
+        "date": "2024-01-01"
     },
-    "Programming Class": {
-        "description": "Learn programming fundamentals and build software projects",
-        "schedule": "Tuesdays and Thursdays, 3:30 PM - 4:30 PM",
-        "max_participants": 20,
-        "participants": ["emma@mergington.edu", "sophia@mergington.edu"]
+    {
+        "id": 2,
+        "description": "Grocery Shopping",
+        "amount": 150.00,
+        "type": "expense",
+        "category": "Food",
+        "date": "2024-01-02"
     },
-    "Gym Class": {
-        "description": "Physical education and sports activities",
-        "schedule": "Mondays, Wednesdays, Fridays, 2:00 PM - 3:00 PM",
-        "max_participants": 30,
-        "participants": ["john@mergington.edu", "olivia@mergington.edu"]
+    {
+        "id": 3,
+        "description": "Electric Bill",
+        "amount": 80.00,
+        "type": "expense",
+        "category": "Utilities",
+        "date": "2024-01-03"
     }
-}
+]
+
+transaction_counter = 4
 
 
 @app.get("/")
@@ -47,21 +65,58 @@ def root():
     return RedirectResponse(url="/static/index.html")
 
 
-@app.get("/activities")
-def get_activities():
-    return activities
+@app.get("/transactions")
+def get_transactions():
+    """Get all transactions"""
+    return transactions
 
 
-@app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
-    """Sign up a student for an activity"""
-    # Validate activity exists
-    if activity_name not in activities:
-        raise HTTPException(status_code=404, detail="Activity not found")
+@app.post("/transactions")
+def add_transaction(transaction: Transaction):
+    """Add a new transaction"""
+    global transaction_counter
+    
+    new_transaction = {
+        "id": transaction_counter,
+        "description": transaction.description,
+        "amount": transaction.amount,
+        "type": transaction.type,
+        "category": transaction.category,
+        "date": transaction.date or datetime.now().strftime("%Y-%m-%d")
+    }
+    
+    transactions.append(new_transaction)
+    transaction_counter += 1
+    
+    return {"message": "Transaction added successfully", "transaction": new_transaction}
 
-    # Get the specific activity
-    activity = activities[activity_name]
 
-    # Add student
-    activity["participants"].append(email)
-    return {"message": f"Signed up {email} for {activity_name}"}
+@app.get("/summary")
+def get_summary():
+    """Get financial summary"""
+    total_income = sum(t["amount"] for t in transactions if t["type"] == "income")
+    total_expenses = sum(t["amount"] for t in transactions if t["type"] == "expense")
+    balance = total_income - total_expenses
+    
+    return {
+        "total_income": total_income,
+        "total_expenses": total_expenses,
+        "balance": balance,
+        "transaction_count": len(transactions)
+    }
+
+
+@app.delete("/transactions/{transaction_id}")
+def delete_transaction(transaction_id: int):
+    """Delete a transaction"""
+    global transactions
+    
+    transaction = next((t for t in transactions if t["id"] == transaction_id), None)
+    
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    transactions = [t for t in transactions if t["id"] != transaction_id]
+    
+    return {"message": f"Transaction {transaction_id} deleted successfully"}
+
